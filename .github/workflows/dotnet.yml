@@ -1,0 +1,68 @@
+name: dotnet-ci
+
+on:
+  push:
+    branches: [ "main" ]
+    tags:     [ "v*" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build-test-publish:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-tags: true
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+
+      - name: Cache NuGet
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/packages.lock.json') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build -c Release --no-restore
+
+      - name: Test
+        if: ${{ hashFiles('tests/**') != '' }}
+        run: dotnet test -c Release --no-build --logger "trx;LogFileName=TestResults.trx"
+
+      - name: Publish Web
+        run: >
+          dotnet publish .\src\KydrasStorage.Web\KydrasStorage.Web.csproj
+          -c Release -o .\artifacts\publish
+          /p:Version=${{ github.ref_type == 'tag' && startsWith(github.ref_name, 'v') && github.ref_name || '0.' + env.GITHUB_RUN_NUMBER }}
+        shell: pwsh
+
+      - name: Zip Artifact
+        run: |
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          [IO.Compression.ZipFile]::CreateFromDirectory(".\artifacts\publish", ".\artifacts\KydrasStorage-${{ github.run_number }}.zip")
+        shell: pwsh
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: KydrasStorage
+          path: artifacts/*.zip
+
+      - name: Release (tag pushes only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*.zip
+          generate_release_notes: true
