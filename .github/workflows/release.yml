@@ -1,11 +1,12 @@
-﻿name: release
+name: release
+
 on:
   push:
     tags:
       - "v*"
 
 jobs:
-  build-release:
+  pack-and-release:
     runs-on: windows-latest
     permissions:
       contents: write
@@ -15,11 +16,21 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
-      - name: Pack artifacts
-        run: pwsh ./scripts/pack.ps1
-      - name: Create GitHub Release
+      - name: Build
+        run: dotnet build -c Release
+      - name: Pack ZIP
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $bins = Get-ChildItem -Recurse -Filter *.dll | ? { $_.FullName -match 'bin\\Release' }
+          if(-not $bins){ throw "No binaries found under bin\\Release" }
+          $out = Join-Path (Get-Location).Path 'artifacts'
+          if(Test-Path $out){ Remove-Item $out -Recurse -Force }
+          New-Item -ItemType Directory -Force $out | Out-Null
+          $zip = Join-Path $out ("KydrasStorage-" + (Get-Date -Format 'yyyyMMdd-HHmm') + ".zip")
+          Compress-Archive -Path $bins.FullName -DestinationPath $zip -Force
+          Write-Host "ZIP=$zip" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+      - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           files: artifacts/*.zip
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

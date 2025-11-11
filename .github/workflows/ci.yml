@@ -1,4 +1,5 @@
-﻿name: ci
+name: ci
+
 on:
   push:
     branches: [ "main" ]
@@ -13,17 +14,17 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: |
-            9.0.x
-            8.0.x
-      - name: Restore/Build
-        run: pwsh ./scripts/build.ps1 -CI
-      - name: Test + Coverage
-        run: pwsh ./scripts/test.ps1 -Coverage
-      - name: Upload TRX
+          dotnet-version: 8.0.x
+      - name: Restore
+        run: dotnet restore
+      - name: Build (Release)
+        run: dotnet build -c Release --no-restore
+      - name: Test
+        run: dotnet test -c Release --logger "trx;LogFileName=results.trx"
+      - name: Upload Test Results
         uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: test-results
           path: |
-            **/TestResults/**/*.trx
-            **/TestResults/**/coverage.cobertura.xml
+            **/TestResults/**
